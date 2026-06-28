@@ -101,6 +101,26 @@ func (r *EmitResolver) GetEnumMemberValue(node *ast.Node) evaluator.Result {
 	return r.checker.enumMemberLinks.Get(node).value
 }
 
+// GetOperatorOverload returns the operator name if the binary expression has a resolved operator overload.
+// Returns an empty string if no operator overload was resolved.
+func (r *EmitResolver) GetOperatorOverload(node *ast.Node) string {
+	if !ast.IsParseTreeNode(node) {
+		return ""
+	}
+	r.checkerMu.Lock()
+	defer r.checkerMu.Unlock()
+	// Trigger lazy checking of the binary expression if not yet resolved
+	if r.checker.operatorOverloadNodes == nil {
+		r.checker.operatorOverloadNodes = make(map[*ast.Node]string)
+	}
+	// Force type resolution of the expression, which will populate operatorOverloadNodes.
+	if _, ok := r.checker.operatorOverloadNodes[node]; !ok && (ast.IsBinaryExpression(node) || ast.IsPrefixUnaryExpression(node)) {
+		r.checker.getTypeOfExpression(node)
+	}
+	result := r.checker.operatorOverloadNodes[node]
+	return result
+}
+
 func (r *EmitResolver) IsDeclarationVisible(node *ast.Node) bool {
 	// Only lock on external API func to prevent deadlocks
 	r.checkerMu.Lock()

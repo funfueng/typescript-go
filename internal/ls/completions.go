@@ -352,6 +352,11 @@ func (l *LanguageService) getCompletionsAtPosition(
 	checker, done := l.GetProgram().GetTypeCheckerForFile(ctx, file)
 	defer done()
 
+	// Inside operators { } blocks, provide operator string completions
+	if operatorCompletions := l.getOperatorNameCompletions(position, file, previousToken); operatorCompletions != nil {
+		return operatorCompletions, nil
+	}
+
 	stringCompletions := l.getStringLiteralCompletions(
 		ctx,
 		file,
@@ -6283,4 +6288,41 @@ func (w *snippetEmitTextWriter) escapingWrite(s string, write func()) {
 	} else {
 		write()
 	}
+}
+
+func (l *LanguageService) getOperatorNameCompletions(position int, file *ast.SourceFile, previousToken *ast.Node) *CompletionList {
+	if previousToken == nil {
+		return nil
+	}
+	opsDecl := ast.FindAncestorKind(previousToken.Parent, ast.KindOperatorsDeclaration)
+	if opsDecl == nil {
+		return nil
+	}
+	operators := []string{"+", "-", "*", "/", "%", "**", "<", ">", "<=", ">=", "==", "!="}
+	items := make([]*CompletionItem, len(operators))
+	replacementSpan := l.getOptionalReplacementSpan(previousToken, file)
+	for i, op := range operators {
+		var editRange lsproto.Range
+		if replacementSpan != nil {
+			editRange = *replacementSpan
+		} else {
+			editRange = l.createLspRangeFromBounds(position, position, file)
+		}
+		insertText := op
+		kind := lsproto.CompletionItemKindOperator
+		items[i] = &CompletionItem{
+			CompletionItem: &lsproto.CompletionItem{
+				Label:      op,
+				Kind:       &kind,
+				InsertText: &insertText,
+				TextEdit: &lsproto.TextEditOrInsertReplaceEdit{
+					TextEdit: &lsproto.TextEdit{
+						Range:   editRange,
+						NewText: op,
+					},
+				},
+			},
+		}
+	}
+	return &CompletionList{Items: items}
 }

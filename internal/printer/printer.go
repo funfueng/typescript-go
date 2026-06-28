@@ -1700,6 +1700,27 @@ func (p *Printer) emitClassStaticBlockDeclaration(node *ast.ClassStaticBlockDecl
 	p.exitNode(node.AsNode(), state)
 }
 
+func (p *Printer) emitOperatorsDeclaration(node *ast.OperatorsDeclaration) {
+	// operators{} block is TypeScript-only syntax; elide the wrapper during JS emit.
+	// Emit each operator method as a regular computed-property class method.
+	// The OperatorOverloadTransformer rewrites usage sites (a+b → a["+"](b)).
+	for _, member := range node.Members.Nodes {
+		op := member.AsOperatorMethodDeclaration()
+		state := p.enterNode(op.AsNode())
+		p.writePunctuation("[")
+		p.emitExpression(op.Name(), 0)
+		p.writePunctuation("]")
+		indented := p.shouldEmitIndented(op.AsNode())
+		p.increaseIndentIf(indented)
+		p.pushNameGenerationScope(op.AsNode())
+		p.emitSignature(op.AsNode())
+		p.emitFunctionBodyNode(op.Body)
+		p.popNameGenerationScope(op.AsNode())
+		p.decreaseIndentIf(indented)
+		p.exitNode(op.AsNode(), state)
+	}
+}
+
 func (p *Printer) emitConstructor(node *ast.ConstructorDeclaration) {
 	state := p.enterNode(node.AsNode())
 	p.emitModifierList(node.AsNode(), node.Modifiers(), false /*allowDecorators*/)
@@ -1800,6 +1821,8 @@ func (p *Printer) emitClassElement(node *ast.ClassElement) {
 		p.emitNotEmittedStatement(node.AsNotEmittedStatement())
 	case ast.KindJSTypeAliasDeclaration:
 		p.emitTypeAliasDeclaration(node.AsTypeAliasDeclaration())
+	case ast.KindOperatorsDeclaration:
+		p.emitOperatorsDeclaration(node.AsOperatorsDeclaration())
 	default:
 		panic(fmt.Sprintf("unexpected ClassElement: %v", node.Kind))
 	}

@@ -136,6 +136,9 @@ func getScriptTransformers(emitContext *printer.EmitContext, host printer.EmitHo
 		// erase types
 		tx = append(tx, tstransforms.NewTypeEraserTransformer(&opts))
 
+		// rewrite operator overloads (a+b → a["+"](b))
+		tx = append(tx, tstransforms.NewOperatorOverloadTransformer(&opts))
+
 		// elide imports
 		if importElisionEnabled {
 			tx = append(tx, tstransforms.NewImportElisionTransformer(&opts))

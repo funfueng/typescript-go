@@ -233,6 +233,8 @@ import type {
     ObjectLiteralLikeNode,
     ObjectTypeDeclaration,
     OmittedExpression,
+    OperatorMethodDeclaration,
+    OperatorsDeclaration,
     OptionalTypeNode,
     OutKeyword,
     OverrideKeyword,
@@ -593,6 +595,14 @@ export function isOmittedExpression(node: Node): node is OmittedExpression {
 
 export function isKeywordExpression(node: Node): node is KeywordExpression {
     return isKeywordExpressionKind(node.kind);
+}
+
+export function isOperatorsDeclaration(node: Node): node is OperatorsDeclaration {
+    return node.kind === SyntaxKind.OperatorsDeclaration;
+}
+
+export function isOperatorMethodDeclaration(node: Node): node is OperatorMethodDeclaration {
+    return node.kind === SyntaxKind.OperatorMethodDeclaration;
 }
 
 export function isStringLiteral(node: Node): node is StringLiteral {
@@ -1294,7 +1304,7 @@ export function isCallLikeExpression(node: Node): node is CallLikeExpression {
 
 export function isFunctionLikeDeclaration(node: Node): node is FunctionLikeDeclaration {
     const kind = node.kind;
-    return kind === SyntaxKind.FunctionDeclaration || kind === SyntaxKind.MethodDeclaration || kind === SyntaxKind.GetAccessor || kind === SyntaxKind.SetAccessor || kind === SyntaxKind.Constructor || kind === SyntaxKind.FunctionExpression || kind === SyntaxKind.ArrowFunction;
+    return kind === SyntaxKind.FunctionDeclaration || kind === SyntaxKind.MethodDeclaration || kind === SyntaxKind.GetAccessor || kind === SyntaxKind.SetAccessor || kind === SyntaxKind.Constructor || kind === SyntaxKind.FunctionExpression || kind === SyntaxKind.ArrowFunction || kind === SyntaxKind.OperatorMethodDeclaration;
 }
 
 export function isVariableOrParameterDeclaration(node: Node): node is VariableOrParameterDeclaration {

@@ -206,6 +206,12 @@ func getChildrenPropertyMask(node *ast.Node) uint8 {
 	case ast.KindClassStaticBlockDeclaration:
 		n := node.AsClassStaticBlockDeclaration()
 		return (boolToByte(hasModifiers(n.Modifiers())) << 0) | (boolToByte(n.Body != nil) << 1)
+	case ast.KindOperatorsDeclaration:
+		n := node.AsOperatorsDeclaration()
+		return (boolToByte(n.Members != nil) << 0)
+	case ast.KindOperatorMethodDeclaration:
+		n := node.AsOperatorMethodDeclaration()
+		return (boolToByte(hasModifiers(n.Modifiers())) << 0) | (boolToByte(n.AsteriskToken != nil) << 1) | (boolToByte(n.Name() != nil) << 2) | (boolToByte(n.PostfixToken != nil) << 3) | (boolToByte(n.TypeParameters != nil) << 4) | (boolToByte(n.Parameters != nil) << 5) | (boolToByte(n.Type != nil) << 6) | (boolToByte(n.Body != nil) << 7)
 	case ast.KindBinaryExpression:
 		n := node.AsBinaryExpression()
 		return (boolToByte(hasModifiers(n.Modifiers())) << 0) | (boolToByte(n.Left != nil) << 1) | (boolToByte(n.Type != nil) << 2) | (boolToByte(n.OperatorToken != nil) << 3) | (boolToByte(n.Right != nil) << 4)

@@ -153,7 +153,7 @@ func (l *LanguageService) getDocumentSymbolsForChildren(ctx context.Context, nod
 					addSymbolForNode(param, nil /*name*/, nil /*children*/)
 				}
 			}
-		case ast.KindFunctionDeclaration, ast.KindFunctionExpression, ast.KindArrowFunction, ast.KindMethodDeclaration, ast.KindGetAccessor,
+		case ast.KindFunctionDeclaration, ast.KindFunctionExpression, ast.KindArrowFunction, ast.KindMethodDeclaration, ast.KindOperatorMethodDeclaration, ast.KindGetAccessor,
 			ast.KindSetAccessor:
 			declName := ast.GetDeclarationName(node)
 			if declName != "" {
@@ -660,7 +660,7 @@ func getSymbolKindFromNode(node *ast.Node) lsproto.SymbolKind {
 		return lsproto.SymbolKindFunction
 	case ast.KindGetAccessor, ast.KindSetAccessor:
 		return lsproto.SymbolKindProperty
-	case ast.KindMethodDeclaration, ast.KindMethodSignature:
+	case ast.KindMethodDeclaration, ast.KindOperatorMethodDeclaration, ast.KindMethodSignature:
 		return lsproto.SymbolKindMethod
 	case ast.KindPropertyDeclaration, ast.KindPropertySignature, ast.KindPropertyAssignment,
 		ast.KindShorthandPropertyAssignment, ast.KindSpreadAssignment, ast.KindIndexSignature:

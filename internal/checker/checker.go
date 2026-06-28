@@ -678,6 +678,7 @@ type Checker struct {
 	valueSymbolLinks                            core.LinkStore[*ast.Symbol, ValueSymbolLinks]
 	mappedSymbolLinks                           core.LinkStore[*ast.Symbol, MappedSymbolLinks]
 	deferredSymbolLinks                         core.LinkStore[*ast.Symbol, DeferredSymbolLinks]
+	operatorOverloadNodes                       map[*ast.Node]string // maps binary expression nodes to operator name
 	aliasSymbolLinks                            core.LinkStore[*ast.Symbol, AliasSymbolLinks]
 	moduleSymbolLinks                           core.LinkStore[*ast.Symbol, ModuleSymbolLinks]
 	lateBoundLinks                              core.LinkStore[*ast.Symbol, LateBoundLinks]
@@ -2373,6 +2374,8 @@ func (c *Checker) checkSourceElementWorker(node *ast.Node) {
 		c.checkMissingDeclaration(node)
 	case ast.KindJSDocNonNullableType, ast.KindJSDocNullableType, ast.KindJSDocAllType, ast.KindJSDocTypeLiteral:
 		c.checkJSDocType(node)
+	case ast.KindOperatorsDeclaration:
+		c.checkOperatorsDeclaration(node)
 	}
 }
 
@@ -2806,6 +2809,45 @@ func (c *Checker) checkClassStaticBlockDeclaration(node *ast.Node) {
 	// Grammar checking
 	c.checkGrammarModifiers(node)
 	node.ForEachChild(c.checkSourceElement)
+}
+
+var validOperatorNames = map[string]bool{
+	"+":  true,
+	"-":  true,
+	"*":  true,
+	"/":  true,
+	"%":  true,
+	"**": true,
+	"<":  true,
+	">":  true,
+	"<=": true,
+	">=": true,
+	"==":  true,
+	"!=":  true,
+	"===": true,
+	"!==": true,
+}
+
+func (c *Checker) checkOperatorsDeclaration(node *ast.Node) {
+	ops := node.AsOperatorsDeclaration()
+	c.checkGrammarModifiers(node)
+	seen := make(map[string]*ast.Node)
+	for _, member := range ops.Members.Nodes {
+		if member.Kind != ast.KindOperatorMethodDeclaration {
+			continue
+		}
+		opMethod := member.AsOperatorMethodDeclaration()
+		name := opMethod.Name().Text()
+		if !validOperatorNames[name] {
+			c.error(opMethod.Name(), diagnostics.Invalid_character)
+		} else if prev, exists := seen[name]; exists {
+			c.error(opMethod.Name(), diagnostics.Duplicate_identifier_0, name)
+			c.error(prev.Name(), diagnostics.Duplicate_identifier_0, name)
+		} else {
+			seen[name] = member
+		}
+		c.checkSourceElement(member)
+	}
 }
 
 func (c *Checker) checkConstructorDeclaration(node *ast.Node) {
@@ -7105,7 +7147,7 @@ func (c *Checker) checkUnusedClassMembers(node *ast.Node) {
 					c.reportUnused(parameter, UnusedKindLocal, NewDiagnosticForNode(parameter.Name(), diagnostics.Property_0_is_declared_but_its_value_is_never_read, ast.SymbolName(parameter.Symbol())))
 				}
 			}
-		case ast.KindIndexSignature, ast.KindSemicolonClassElement, ast.KindClassStaticBlockDeclaration, ast.KindJSTypeAliasDeclaration:
+		case ast.KindIndexSignature, ast.KindSemicolonClassElement, ast.KindClassStaticBlockDeclaration, ast.KindJSTypeAliasDeclaration, ast.KindOperatorsDeclaration:
 			// Can't be private
 		default:
 			panic("Unhandled case in checkUnusedClassMembers")
@@ -10831,6 +10873,17 @@ func (c *Checker) checkPrefixUnaryExpression(node *ast.Node) *Type {
 	if operandType == c.silentNeverType {
 		return c.silentNeverType
 	}
+	// Try unary operator overloading for '-' and '+'
+	if expr.Operator == ast.KindMinusToken || expr.Operator == ast.KindPlusToken {
+		opName := scanner.TokenToString(expr.Operator)
+		if overloadType, ok := c.resolveUnaryOperatorOverload(operandType, node, opName); ok {
+			if overloadType != nil {
+				return overloadType
+			}
+			// Overload found but return type not yet resolved; suppress error by returning any
+			return c.anyType
+		}
+	}
 	switch expr.Operand.Kind {
 	case ast.KindNumericLiteral:
 		switch expr.Operator {
@@ -12301,6 +12354,14 @@ func (c *Checker) checkBinaryLikeExpression(left *ast.Node, operatorToken *ast.N
 	}
 	leftType := c.checkExpressionEx(left, checkMode)
 	rightType := c.checkExpressionEx(right, checkMode)
+	// Try operator overloading on the left-hand type
+	if overloadType, ok := c.resolveBinaryOperatorOverload(leftType, operator, rightType, errorNode, operatorToken.Parent); ok {
+		if overloadType != nil {
+			return overloadType
+		}
+		// Overload found but return type not yet resolved; suppress error by returning any
+		return c.anyType
+	}
 	if ast.IsLogicalOrCoalescingBinaryOperator(operator) {
 		parent := left.Parent.Parent
 		for ast.IsParenthesizedExpression(parent) || ast.IsLogicalOrCoalescingBinaryExpression(parent) {
@@ -12695,6 +12756,110 @@ func (c *Checker) reportOperatorError(leftType *Type, operator ast.Kind, rightTy
 	default:
 		c.errorAndMaybeSuggestAwait(errorNode, wouldWorkWithAwait, diagnostics.Operator_0_cannot_be_applied_to_types_1_and_2, scanner.TokenToString(operator), leftStr, rightStr)
 	}
+}
+
+// resolveUnaryOperatorOverload attempts to resolve a unary operator overload on the operand type.
+// Returns (returnType, true) if an overload was found, (nil, false) otherwise.
+func (c *Checker) resolveUnaryOperatorOverload(operandType *Type, operatorNode *ast.Node, opName string) (*Type, bool) {
+	if operandType == nil {
+		return nil, false
+	}
+	apparent := c.getApparentType(operandType)
+	if apparent.symbol == nil {
+		apparent = c.getReducedApparentType(operandType)
+		if apparent.symbol == nil {
+			return nil, false
+		}
+	}
+	members := c.getMembersOfSymbol(apparent.symbol)
+	if method, ok := members[opName]; ok && method != nil {
+		if c.operatorOverloadNodes == nil {
+			c.operatorOverloadNodes = make(map[*ast.Node]string)
+		}
+		c.operatorOverloadNodes[operatorNode] = opName
+		return c.resolveOverloadReturnType(method)
+	}
+	method := c.getPropertyOfType(operandType, opName)
+	if method != nil {
+		if c.operatorOverloadNodes == nil {
+			c.operatorOverloadNodes = make(map[*ast.Node]string)
+		}
+		c.operatorOverloadNodes[operatorNode] = opName
+		return c.resolveOverloadReturnType(method)
+	}
+	return nil, false
+}
+
+// resolveBinaryOperatorOverload attempts to resolve an operator overload on the left-hand type.
+// Returns (returnType, true) if an overload was found, (nil, false) otherwise.
+func (c *Checker) resolveBinaryOperatorOverload(leftType *Type, operator ast.Kind, rightType *Type, errorNode *ast.Node, operatorNode *ast.Node) (*Type, bool) {
+	if leftType == nil {
+		return nil, false
+	}
+	// Get the operator name string
+	opName := scanner.TokenToString(operator)
+	if opName == "" {
+		return nil, false
+	}
+	// Unwrap the type to get the apparent (instance) type
+	apparent := c.getApparentType(leftType)
+	if apparent.symbol == nil {
+		// Try reduced apparent type
+		apparent = c.getReducedApparentType(leftType)
+		if apparent.symbol == nil {
+			return nil, false
+		}
+	}
+	// Check symbol members directly
+	members := c.getMembersOfSymbol(apparent.symbol)
+	if method, ok := members[opName]; ok && method != nil {
+		if c.operatorOverloadNodes == nil {
+			c.operatorOverloadNodes = make(map[*ast.Node]string)
+		}
+		c.operatorOverloadNodes[operatorNode] = opName
+		return c.resolveOverloadReturnType(method)
+	}
+	// Also try getPropertyOfType as fallback
+	method := c.getPropertyOfType(leftType, opName)
+	if method != nil {
+		if c.operatorOverloadNodes == nil {
+			c.operatorOverloadNodes = make(map[*ast.Node]string)
+		}
+		c.operatorOverloadNodes[operatorNode] = opName
+		return c.resolveOverloadReturnType(method)
+	}
+	return nil, false
+}
+
+// resolveOverloadReturnType resolves the return type of an overloaded operator method.
+func (c *Checker) resolveOverloadReturnType(method *ast.Symbol) (*Type, bool) {
+	// First, try to resolve from the declaration's type annotation directly
+	if len(method.Declarations) > 0 {
+		decl := method.Declarations[0]
+		if decl.Kind == ast.KindOperatorMethodDeclaration {
+			if typeNode := decl.Type(); typeNode != nil {
+				if t := c.getTypeFromTypeNode(typeNode); t != nil && t != c.errorType {
+					return t, true
+				}
+			}
+		}
+	}
+	methodType := c.getTypeOfSymbol(method)
+	if methodType == nil {
+		return nil, true // suppress error
+	}
+	signatures := c.getSignaturesOfType(methodType, SignatureKindCall)
+	if len(signatures) == 0 {
+		return nil, true // suppress error
+	}
+	for _, sig := range signatures {
+		// Try to resolve the return type via getReturnTypeOfSignature which
+		// looks at the annotation or falls back to body inference.
+		if returnType := c.getReturnTypeOfSignature(sig); returnType != nil && returnType != c.errorType {
+			return returnType, true
+		}
+	}
+	return nil, true // suppress error
 }
 
 func (c *Checker) reportOperatorErrorUnless(leftType *Type, operator ast.Kind, rightType *Type, errorNode *ast.Node, typesAreCompatible func(left *Type, right *Type) bool) {
@@ -29094,6 +29259,9 @@ func (c *Checker) getTypeOfPropertyOrIndexSignatureOfType(t *Type, name string) 
  * @returns the contextual type of an expression.
  */
 func (c *Checker) getContextualType(node *ast.Node, contextFlags ContextFlags) *Type {
+	if node == nil {
+		return nil
+	}
 	if node.Flags&ast.NodeFlagsInWithStatement != 0 {
 		// We cannot answer semantic questions within a with block, do not proceed any further
 		return nil
@@ -31337,6 +31505,60 @@ func (c *Checker) GetSymbolAtLocation(node *ast.Node) *ast.Symbol {
 
 	// set ignoreErrors: true because any lookups invoked by the API shouldn't cause any new errors
 	return c.getSymbolAtLocation(ast.GetReparsedNodeForNode(node), true /*ignoreErrors*/)
+}
+
+// GetOperatorOverloadSymbol returns the operator-method symbol that an operator
+// expression resolves to, or nil if the operator is not overloaded. It accepts the
+// operator token, the binary/prefix-unary expression node, or an operand, and works
+// out the enclosing operator expression. This is intended for the language service
+// (hover/quick-info) and must not be used inside the checker itself.
+func (c *Checker) GetOperatorOverloadSymbol(node *ast.Node) *ast.Symbol {
+	node = ast.GetReparsedNodeForNode(node)
+	if node == nil {
+		return nil
+	}
+	// Resolve to the enclosing operator expression if the caller handed us the operator
+	// token (or some inner node).
+	expr := node
+	for expr != nil && !ast.IsBinaryExpression(expr) && !ast.IsPrefixUnaryExpression(expr) {
+		expr = expr.Parent
+	}
+	if expr == nil {
+		return nil
+	}
+	var operand *ast.Node
+	var operator ast.Kind
+	switch {
+	case ast.IsBinaryExpression(expr):
+		b := expr.AsBinaryExpression()
+		// Only respond when the hover is on the operator token itself, not the operands.
+		if node != expr && node != b.OperatorToken && !ast.IsBinaryExpression(node) {
+			return nil
+		}
+		operand = b.Left
+		operator = b.OperatorToken.Kind
+	case ast.IsPrefixUnaryExpression(expr):
+		p := expr.AsPrefixUnaryExpression()
+		operand = p.Operand
+		operator = p.Operator
+	default:
+		return nil
+	}
+	opName := scanner.TokenToString(operator)
+	if opName == "" {
+		return nil
+	}
+	leftType := c.getTypeOfExpression(operand)
+	if leftType == nil {
+		return nil
+	}
+	apparent := c.getApparentType(leftType)
+	if apparent.symbol != nil {
+		if method, ok := c.getMembersOfSymbol(apparent.symbol)[opName]; ok && method != nil {
+			return method
+		}
+	}
+	return c.getPropertyOfType(leftType, opName)
 }
 
 // Returns the symbol associated with a given AST node. Do *not* use this function in the checker itself! It should

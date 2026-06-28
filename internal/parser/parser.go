@@ -1865,6 +1865,9 @@ func (p *Parser) parseClassElement() *ast.Node {
 	if p.parseContextualModifier(ast.KindSetKeyword) {
 		return p.parseAccessorDeclaration(pos, jsdoc, modifiers, ast.KindSetAccessor, ParseFlagsNone)
 	}
+	if p.token == ast.KindIdentifier && p.scanner.TokenValue() == "operators" && p.lookAhead((*Parser).nextTokenIsOpenBrace) {
+		return p.parseOperatorsDeclaration(pos, jsdoc, modifiers)
+	}
 	if p.token == ast.KindConstructorKeyword || p.token == ast.KindStringLiteral {
 		constructorDeclaration := p.tryParseConstructorDeclaration(pos, jsdoc, modifiers)
 		if constructorDeclaration != nil {
@@ -1916,6 +1919,34 @@ func (p *Parser) parseClassStaticBlockBody() *ast.Node {
 	body := p.parseBlock(false /*ignoreMissingOpenBrace*/, nil /*diagnosticMessage*/)
 	p.contextFlags = saveContextFlags
 	return body
+}
+
+func (p *Parser) parseOperatorsDeclaration(pos int, jsdoc jsdocScannerInfo, modifiers *ast.ModifierList) *ast.Node {
+	// Consume 'operators' identifier
+	p.nextToken()
+	// Parse '{'
+	p.parseExpected(ast.KindOpenBraceToken)
+	// Parse operator methods
+	members := p.parseList(PCClassMembers, (*Parser).parseOperatorMethod)
+	p.parseExpected(ast.KindCloseBraceToken)
+	result := p.finishNode(p.factory.NewOperatorsDeclaration(members), pos)
+	p.withJSDoc(result, jsdoc)
+	return result
+}
+
+func (p *Parser) parseOperatorMethod() *ast.Node {
+	pos := p.nodePos()
+	jsdoc := p.jsdocScannerInfo()
+	// Operator name must be a string literal like "+" or "-"
+	name := p.parsePropertyName()
+	questionToken := p.parseOptionalToken(ast.KindQuestionToken)
+	typeParameters := p.parseTypeParameters()
+	parameters := p.parseParameters(ParseFlagsNone)
+	typeNode := p.parseReturnType(ast.KindColonToken, false /*isType*/)
+	body := p.parseFunctionBlockOrSemicolon(ParseFlagsNone, diagnostics.X_or_expected)
+	result := p.finishNode(p.factory.NewOperatorMethodDeclaration(nil /*modifiers*/, nil /*asteriskToken*/, name, questionToken, typeParameters, parameters, typeNode, nil /*fullSignature*/, body), pos)
+	p.withJSDoc(result, jsdoc)
+	return result
 }
 
 func (p *Parser) tryParseConstructorDeclaration(pos int, jsdoc jsdocScannerInfo, modifiers *ast.ModifierList) *ast.Node {

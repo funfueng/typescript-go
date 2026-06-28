@@ -126,6 +126,8 @@ import type {
     NonNullExpression,
     ObjectBindingPattern,
     ObjectLiteralExpression,
+    OperatorMethodDeclaration,
+    OperatorsDeclaration,
     OptionalTypeNode,
     ParameterDeclaration,
     ParenthesizedExpression,
@@ -298,6 +300,8 @@ import {
     updateNonNullExpression,
     updateObjectBindingPattern,
     updateObjectLiteralExpression,
+    updateOperatorMethodDeclaration,
+    updateOperatorsDeclaration,
     updateOptionalTypeNode,
     updateParameterDeclaration,
     updateParenthesizedExpression,
@@ -826,6 +830,21 @@ const visitEachChildTable: Record<number, VisitEachChildFunction> = {
         const _modifiers = visitNodes(node.modifiers, visitor);
         const _body = visitNode(node.body, visitor, isBlock);
         return updateClassStaticBlockDeclaration(node, _modifiers, _body);
+    },
+    [SyntaxKind.OperatorsDeclaration]: (node: OperatorsDeclaration, visitor: Visitor): OperatorsDeclaration => {
+        const _members = visitNodes(node.members, visitor);
+        return updateOperatorsDeclaration(node, _members);
+    },
+    [SyntaxKind.OperatorMethodDeclaration]: (node: OperatorMethodDeclaration, visitor: Visitor): OperatorMethodDeclaration => {
+        const _modifiers = visitNodes(node.modifiers, visitor);
+        const _asteriskToken = visitNode(node.asteriskToken, visitor, isAsteriskToken);
+        const _name = visitNode(node.name, visitor, isPropertyName);
+        const _postfixToken = visitNode(node.postfixToken, visitor, isQuestionOrExclamationToken);
+        const _typeParameters = visitNodes(node.typeParameters, visitor);
+        const _parameters = visitNodes(node.parameters, visitor);
+        const _type = visitNode(node.type, visitor, isTypeNode);
+        const _body = visitNode(node.body, visitor, isFunctionBody);
+        return updateOperatorMethodDeclaration(node, _modifiers, _asteriskToken, _name, _postfixToken, _typeParameters, _parameters, _type, _body);
     },
     [SyntaxKind.BinaryExpression]: (node: BinaryExpression, visitor: Visitor): BinaryExpression => {
         const _modifiers = visitNodes(node.modifiers, visitor);

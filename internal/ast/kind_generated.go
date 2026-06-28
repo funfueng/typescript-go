@@ -310,6 +310,9 @@ const (
 	KindNamespaceExport
 	KindExportSpecifier
 	KindMissingDeclaration
+	// Operator overloading
+	KindOperatorsDeclaration
+	KindOperatorMethodDeclaration
 	// Module references
 	KindExternalModuleReference
 	// JSX

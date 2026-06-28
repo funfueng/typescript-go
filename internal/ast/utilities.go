@@ -184,6 +184,9 @@ func IsAssignmentTarget(node *Node) bool {
 func GetAssignmentTarget(node *Node) *Node {
 	for {
 		parent := node.Parent
+		if parent == nil {
+			return nil
+		}
 		switch parent.Kind {
 		case KindBinaryExpression:
 			if IsAssignmentOperator(parent.AsBinaryExpression().OperatorToken.Kind) && parent.AsBinaryExpression().Left == node {

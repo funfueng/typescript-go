@@ -43,6 +43,21 @@ func (l *LanguageService) ProvideHover(ctx context.Context, params *lsproto.Hove
 	rangeNode := getNodeForQuickInfo(node)
 	symbol := getSymbolAtLocationForQuickInfo(c, node)
 
+	// Operator overloading: hovering an overloaded operator token (e.g. the `+` in
+	// `a + b`) or an operator method declaration (`"+"(...)` inside an `operators { }`
+	// block) should surface the resolved operator method and its signature. Operator
+	// methods are not function-like in the checker, so the generic symbol display can't
+	// build a signature for them; handle them explicitly here.
+	if opHover := l.tryOperatorHover(c, node, symbol, contentFormat); opHover != "" {
+		hoverRange := l.getLspRangeOfNode(rangeNode, nil, nil)
+		return lsproto.HoverOrNull{Hover: &lsproto.Hover{
+			Contents: lsproto.MarkupContentOrStringOrMarkedStringWithLanguageOrMarkedStrings{
+				MarkupContent: &lsproto.MarkupContent{Kind: contentFormat, Value: opHover},
+			},
+			Range: &hoverRange,
+		}}, nil
+	}
+
 	// Always create VerbosityContext for hover so that canExpandSymbol can signal
 	// canIncreaseVerbosity even at Level 0. The nodebuilder also detects expandable
 	// types at Level 0 via shouldExpandType (maxExpansionDepth = 0).
@@ -806,7 +821,118 @@ func getSymbolAtLocationForQuickInfo(c *checker.Checker, node *ast.Node) *ast.Sy
 			}
 		}
 	}
-	return c.GetSymbolAtLocation(node)
+	symbol := c.GetSymbolAtLocation(node)
+	if symbol == nil {
+		// Operator tokens (e.g. the `+` in `a + b`) have no symbol of their own. If the
+		// operator is overloaded via an `operators { }` block, surface the resolved
+		// operator method so other quick-info consumers still get a symbol.
+		if opSymbol := c.GetOperatorOverloadSymbol(node); opSymbol != nil {
+			return opSymbol
+		}
+	}
+	return symbol
+}
+
+// operatorMethodForHover returns the operator method symbol that the hover at `node`
+// refers to, or nil if `node` is not part of an operator overload. It handles both the
+// declaration site (the `"+"` name inside an `operators { }` block) and the use site
+// (an overloaded operator token such as the `+` in `a + b` or the `-` in `-v`).
+func operatorMethodForHover(c *checker.Checker, node *ast.Node) *ast.Symbol {
+	hasOperatorDecl := func(sym *ast.Symbol) bool {
+		if sym == nil {
+			return false
+		}
+		for _, decl := range sym.Declarations {
+			if decl.Kind == ast.KindOperatorMethodDeclaration {
+				return true
+			}
+		}
+		return false
+	}
+	// Declaration site: the symbol at the location already points at the operator method.
+	if sym := c.GetSymbolAtLocation(node); hasOperatorDecl(sym) {
+		return sym
+	}
+	// Use site: an operator token whose left operand resolves to an operator method.
+	if sym := c.GetOperatorOverloadSymbol(node); hasOperatorDecl(sym) {
+		return sym
+	}
+	return nil
+}
+
+// tryOperatorHover builds hover content for operator-overload methods. Returns "" when
+// the hover target is not an operator overload, letting the caller fall back to the
+// normal quick-info path. Operator methods are not function-like in the checker, so the
+// generic symbol display cannot build a signature for them; we do it directly here.
+func (l *LanguageService) tryOperatorHover(c *checker.Checker, node *ast.Node, _ *ast.Symbol, contentFormat lsproto.MarkupKind) string {
+	sym := operatorMethodForHover(c, node)
+	if sym == nil {
+		return ""
+	}
+	var decl *ast.Node
+	for _, d := range sym.Declarations {
+		if d.Kind == ast.KindOperatorMethodDeclaration {
+			decl = d
+			break
+		}
+	}
+	if decl == nil {
+		return ""
+	}
+
+	// Signature text, e.g. `(other: Vec3): Vec3`. Operator methods are not function-like
+	// in the checker, so the signature formatter (node builder / pseudochecker) panics on
+	// them. Extract the written signature directly from source instead — this is faithful
+	// to what the user wrote and avoids those code paths entirely.
+	sigText := operatorSignatureText(decl)
+
+	// Containing class name, e.g. `Vec3`.
+	className := ""
+	if cls := ast.FindAncestor(decl, ast.IsClassLike); cls != nil {
+		if name := cls.Name(); name != nil {
+			className = name.Text()
+		}
+	}
+
+	// Compose: `(operator) Vec3["+"](other: Vec3): Vec3`.
+	var b strings.Builder
+	b.WriteString("(operator) ")
+	b.WriteString(className)
+	b.WriteString(`["`)
+	b.WriteString(sym.Name)
+	b.WriteString(`"]`)
+	b.WriteString(sigText)
+	quickInfo := b.String()
+
+	documentation := l.getDocumentationFromDeclaration(c, sym, decl, node, contentFormat, false /*commentOnly*/)
+	if contentFormat == lsproto.MarkupKindMarkdown {
+		return formatQuickInfo(quickInfo) + documentation
+	}
+	return quickInfo + documentation
+}
+
+// operatorSignatureText extracts the `(params): ReturnType` portion of an operator
+// method declaration directly from source, e.g. `(other: Vec3): Vec3`.
+func operatorSignatureText(decl *ast.Node) string {
+	sourceFile := ast.GetSourceFileOfNode(decl)
+	if sourceFile == nil {
+		return ""
+	}
+	text := sourceFile.Text()
+	name := decl.Name()
+	if name == nil {
+		return ""
+	}
+	start := name.End()
+	// End at the body (`{`) if present, otherwise at the end of the declaration.
+	end := decl.End()
+	if body := decl.Body(); body != nil {
+		end = body.Pos()
+	}
+	if start < 0 || end > len(text) || start >= end {
+		return ""
+	}
+	return strings.TrimSpace(text[start:end])
 }
 
 func getSignaturesAtLocation(c *checker.Checker, symbol *ast.Symbol, kind checker.SignatureKind, node *ast.Node) []*checker.Signature {

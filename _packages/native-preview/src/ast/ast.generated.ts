@@ -770,6 +770,14 @@ export interface OmittedExpression extends ExpressionBase {
 export interface KeywordExpression<TKind extends KeywordExpressionSyntaxKind = KeywordExpressionSyntaxKind> extends ExpressionBase {
     readonly kind: TKind;
 }
+export interface OperatorsDeclaration extends NodeBase, DeclarationBase, ClassElementBase {
+    readonly kind: SyntaxKind.OperatorsDeclaration;
+    readonly members: NodeArray<OperatorMethodDeclaration>;
+}
+export interface OperatorMethodDeclaration extends NodeBase, NamedMemberBase, FunctionLikeWithBodyBase, ClassElementBase {
+    readonly kind: SyntaxKind.OperatorMethodDeclaration;
+    readonly body?: FunctionBody;
+}
 export interface StringLiteral extends LiteralExpressionBase {
     readonly kind: SyntaxKind.StringLiteral;
 }
@@ -1377,7 +1385,7 @@ export type JsxOpeningLikeElement = JsxOpeningElement | JsxSelfClosingElement;
 export type NamedImportsOrExports = NamedImports | NamedExports;
 export type BreakOrContinueStatement = BreakStatement | ContinueStatement;
 export type CallLikeExpression = CallExpression | NewExpression | TaggedTemplateExpression | Decorator | JsxOpeningLikeElement | BinaryExpression;
-export type FunctionLikeDeclaration = FunctionDeclaration | MethodDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | FunctionExpression | ArrowFunction;
+export type FunctionLikeDeclaration = FunctionDeclaration | MethodDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | FunctionExpression | ArrowFunction | OperatorMethodDeclaration;
 export type VariableOrParameterDeclaration = VariableDeclaration | ParameterDeclaration;
 export type VariableOrPropertyDeclaration = VariableDeclaration | PropertyDeclaration;
 export type CallOrNewExpression = CallExpression | NewExpression;
@@ -1500,6 +1508,7 @@ export type BindingElementList = NodeArray<BindingElement>;
 export type TypeParameterList = NodeArray<TypeParameterDeclaration>;
 export type ParameterList = NodeArray<ParameterDeclaration>;
 export type HeritageClauseList = NodeArray<HeritageClause>;
+export type OperatorMethodDeclarationList = NodeArray<OperatorMethodDeclaration>;
 export type ClassElementList = NodeArray<ClassElement>;
 export type TypeElementList = NodeArray<TypeElement>;
 export type ExpressionWithTypeArgumentsList = NodeArray<ExpressionWithTypeArguments>;

@@ -2007,6 +2007,28 @@ func (node *PropertyDeclaration) propagateSubtreeFacts() SubtreeFacts {
 		propagateSubtreeFacts(node.name)
 }
 
+func (node *OperatorsDeclaration) computeSubtreeFacts() SubtreeFacts {
+	return propagateNodeListSubtreeFacts(node.Members, propagateSubtreeFacts) |
+		SubtreeContainsTypeScript
+}
+
+func (node *OperatorMethodDeclaration) computeSubtreeFacts() SubtreeFacts {
+	isAsync := node.Modifiers() != nil && node.Modifiers().ModifierFlags&ModifierFlagsAsync != 0
+	isGenerator := node.AsteriskToken != nil
+	return propagateModifierListSubtreeFacts(node.Modifiers()) |
+		propagateSubtreeFacts(node.AsteriskToken) |
+		propagateSubtreeFacts(node.name) |
+		propagateEraseableSyntaxSubtreeFacts(node.PostfixToken) |
+		propagateEraseableSyntaxListSubtreeFacts(node.TypeParameters) |
+		propagateNodeListSubtreeFacts(node.Parameters, propagateSubtreeFacts) |
+		propagateSubtreeFacts(node.Body) |
+		propagateEraseableSyntaxSubtreeFacts(node.Type) |
+		propagateEraseableSyntaxSubtreeFacts(node.FullSignature) |
+		core.IfElse(isAsync && isGenerator, SubtreeContainsForAwaitOrAsyncGenerator, SubtreeFactsNone) |
+		core.IfElse(isAsync && !isGenerator, SubtreeContainsAnyAwait, SubtreeFactsNone) |
+		SubtreeContainsTypeScript
+}
+
 func (node *ClassStaticBlockDeclaration) computeSubtreeFacts() SubtreeFacts {
 	return propagateModifierListSubtreeFacts(node.modifiers) |
 		propagateSubtreeFacts(node.Body) |

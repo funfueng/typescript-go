@@ -544,6 +544,19 @@ func (d *astDecoder) createChildrenNode(kind ast.Kind, data uint32, childIndices
 		ast.KindThisKeyword,
 		ast.KindTrueKeyword:
 		return d.factory.NewKeywordExpression(kind), nil
+	case ast.KindOperatorsDeclaration:
+		return d.factory.NewOperatorsDeclaration(d.singleNodeListChild(childIndices)), nil
+	case ast.KindOperatorMethodDeclaration:
+		it := newChildIter(childIndices)
+		modifiers := d.modifierListAt(it.nextIf(mask, 0))
+		asteriskToken := d.nodeAt(it.nextIf(mask, 1))
+		name := d.nodeAt(it.nextIf(mask, 2))
+		postfixToken := d.nodeAt(it.nextIf(mask, 3))
+		typeParameters := d.nodeListAt(it.nextIf(mask, 4))
+		parameters := d.nodeListAt(it.nextIf(mask, 5))
+		typeNode := d.nodeAt(it.nextIf(mask, 6))
+		body := d.nodeAt(it.nextIf(mask, 7))
+		return d.factory.NewOperatorMethodDeclaration(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, typeNode, nil, body), nil
 	case ast.KindBinaryExpression:
 		it := newChildIter(childIndices)
 		modifiers := d.modifierListAt(it.nextIf(mask, 0))

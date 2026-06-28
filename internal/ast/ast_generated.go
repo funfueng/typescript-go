@@ -48,6 +48,7 @@ type NodeFactory struct {
 	modifierListArena                  core.Arena[ModifierList]
 	nodeListArena                      core.Arena[NodeList]
 	numericLiteralArena                core.Arena[NumericLiteral]
+	operatorMethodDeclarationArena     core.Arena[OperatorMethodDeclaration]
 	parameterDeclarationArena          core.Arena[ParameterDeclaration]
 	parenthesizedExpressionArena       core.Arena[ParenthesizedExpression]
 	parenthesizedTypeNodeArena         core.Arena[ParenthesizedTypeNode]
@@ -317,6 +318,8 @@ type (
 	ClassStaticBlockDeclarationNode   = Node
 	OmittedExpressionNode             = Node
 	KeywordExpressionNode             = Node
+	OperatorsDeclarationNode          = Node
+	OperatorMethodDeclarationNode     = Node
 	StringLiteralNode                 = Node
 	NumericLiteralNode                = Node
 	BigIntLiteralNode                 = Node
@@ -491,6 +494,7 @@ type (
 	TypeParameterList               = NodeList // NodeList[*TypeParameterDeclaration]
 	ParameterList                   = NodeList // NodeList[*ParameterDeclaration]
 	HeritageClauseList              = NodeList // NodeList[*HeritageClause]
+	OperatorMethodDeclarationList   = NodeList // NodeList[*OperatorMethodDeclaration]
 	ClassElementList                = NodeList // NodeList[*ClassElement]
 	TypeElementList                 = NodeList // NodeList[*TypeElement]
 	ExpressionWithTypeArgumentsList = NodeList // NodeList[*ExpressionWithTypeArguments]
@@ -560,7 +564,7 @@ type (
 	NamedImportsOrExports          = Node // NamedImports | NamedExports
 	BreakOrContinueStatement       = Node // BreakStatement | ContinueStatement
 	CallLikeExpression             = Node // CallExpression | NewExpression | TaggedTemplateExpression | Decorator | JsxOpeningLikeElement | BinaryExpression
-	FunctionLikeDeclaration        = Node // FunctionDeclaration | MethodDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | FunctionExpression | ArrowFunction
+	FunctionLikeDeclaration        = Node // FunctionDeclaration | MethodDeclaration | GetAccessorDeclaration | SetAccessorDeclaration | ConstructorDeclaration | FunctionExpression | ArrowFunction | OperatorMethodDeclaration
 	VariableOrParameterDeclaration = Node // VariableDeclaration | ParameterDeclaration
 	VariableOrPropertyDeclaration  = Node // VariableDeclaration | PropertyDeclaration
 	CallOrNewExpression            = Node // CallExpression | NewExpression
@@ -3580,6 +3584,109 @@ func IsKeywordExpression(node *Node) bool {
 		return true
 	}
 	return false
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// OperatorsDeclaration
+// ──────────────────────────────────────────────────────────────────────
+
+type OperatorsDeclaration struct {
+	NodeBase
+	DeclarationBase
+	ClassElementBase
+	CompositeBase
+	Members *OperatorMethodDeclarationList
+}
+
+func (f *NodeFactory) NewOperatorsDeclaration(members *OperatorMethodDeclarationList) *Node {
+	data := &OperatorsDeclaration{}
+	data.Members = members
+	return f.newNode(KindOperatorsDeclaration, data)
+}
+
+func (f *NodeFactory) UpdateOperatorsDeclaration(node *OperatorsDeclaration, members *OperatorMethodDeclarationList) *Node {
+	if members != node.Members {
+		return updateNode(f.NewOperatorsDeclaration(members), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
+}
+
+func (node *OperatorsDeclaration) ForEachChild(v Visitor) bool {
+	return visitNodeList(v, node.Members)
+}
+
+func (node *OperatorsDeclaration) VisitEachChild(v *NodeVisitor) *Node {
+	return v.Factory.UpdateOperatorsDeclaration(node, v.visitNodes(node.Members))
+}
+
+func (node *OperatorsDeclaration) Clone(f NodeFactoryCoercible) *Node {
+	return cloneNode(f.AsNodeFactory().NewOperatorsDeclaration(node.Members), node.AsNode(), f.AsNodeFactory().hooks)
+}
+
+func IsOperatorsDeclaration(node *Node) bool {
+	return node.Kind == KindOperatorsDeclaration
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// OperatorMethodDeclaration
+// ──────────────────────────────────────────────────────────────────────
+
+type OperatorMethodDeclaration struct {
+	NodeBase
+	NamedMemberBase
+	FunctionLikeWithBodyBase
+	FlowNodeBase
+	ClassElementBase
+	CompositeBase
+}
+
+func (f *NodeFactory) NewOperatorMethodDeclaration(modifiers *ModifierList, asteriskToken *AsteriskToken, name *PropertyName, postfixToken *TokenNode, typeParameters *TypeParameterList, parameters *ParameterList, typeNode *TypeNode, fullSignature *TypeNode, body *FunctionBody) *Node {
+	data := f.operatorMethodDeclarationArena.New()
+	data.modifiers = modifiers
+	data.AsteriskToken = asteriskToken
+	data.name = name
+	data.PostfixToken = postfixToken
+	data.TypeParameters = typeParameters
+	data.Parameters = parameters
+	data.Type = typeNode
+	data.FullSignature = fullSignature
+	data.Body = body
+	return f.newNode(KindOperatorMethodDeclaration, data)
+}
+
+func (f *NodeFactory) UpdateOperatorMethodDeclaration(node *OperatorMethodDeclaration, modifiers *ModifierList, asteriskToken *AsteriskToken, name *PropertyName, postfixToken *TokenNode, typeParameters *TypeParameterList, parameters *ParameterList, typeNode *TypeNode, fullSignature *TypeNode, body *FunctionBody) *Node {
+	if modifiers != node.modifiers || asteriskToken != node.AsteriskToken || name != node.name || postfixToken != node.PostfixToken || typeParameters != node.TypeParameters || parameters != node.Parameters || typeNode != node.Type || fullSignature != node.FullSignature || body != node.Body {
+		return updateNode(f.NewOperatorMethodDeclaration(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, typeNode, fullSignature, body), node.AsNode(), f.hooks)
+	}
+	return node.AsNode()
+}
+
+func (node *OperatorMethodDeclaration) ForEachChild(v Visitor) bool {
+	return visitModifiers(v, node.modifiers) ||
+		visit(v, node.AsteriskToken) ||
+		visit(v, node.name) ||
+		visit(v, node.PostfixToken) ||
+		visitNodeList(v, node.TypeParameters) ||
+		visitNodeList(v, node.Parameters) ||
+		visit(v, node.Type) ||
+		visit(v, node.FullSignature) ||
+		visit(v, node.Body)
+}
+
+func (node *OperatorMethodDeclaration) VisitEachChild(v *NodeVisitor) *Node {
+	return v.Factory.UpdateOperatorMethodDeclaration(node, v.visitModifiers(node.modifiers), v.visitNode(node.AsteriskToken), v.visitNode(node.name), v.visitNode(node.PostfixToken), v.visitNodes(node.TypeParameters), v.visitParameters(node.Parameters), v.visitNode(node.Type), v.visitNode(node.FullSignature), v.visitFunctionBody(node.Body))
+}
+
+func (node *OperatorMethodDeclaration) Clone(f NodeFactoryCoercible) *Node {
+	return cloneNode(f.AsNodeFactory().NewOperatorMethodDeclaration(node.Modifiers(), node.AsteriskToken, node.name, node.PostfixToken, node.TypeParameters, node.Parameters, node.Type, node.FullSignature, node.Body), node.AsNode(), f.AsNodeFactory().hooks)
+}
+
+func (node *OperatorMethodDeclaration) Name() *DeclarationName {
+	return node.name
+}
+
+func IsOperatorMethodDeclaration(node *Node) bool {
+	return node.Kind == KindOperatorMethodDeclaration
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -8943,6 +9050,14 @@ func (n *Node) AsOmittedExpression() *OmittedExpression {
 
 func (n *Node) AsKeywordExpression() *KeywordExpression {
 	return n.data.(*KeywordExpression)
+}
+
+func (n *Node) AsOperatorsDeclaration() *OperatorsDeclaration {
+	return n.data.(*OperatorsDeclaration)
+}
+
+func (n *Node) AsOperatorMethodDeclaration() *OperatorMethodDeclaration {
+	return n.data.(*OperatorMethodDeclaration)
 }
 
 func (n *Node) AsStringLiteral() *StringLiteral {

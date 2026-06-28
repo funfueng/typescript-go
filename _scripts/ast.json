@@ -344,6 +344,11 @@
             "ExportSpecifier",
             "MissingDeclaration",
             {
+                "comment": "Operator overloading"
+            },
+            "OperatorsDeclaration",
+            "OperatorMethodDeclaration",
+            {
                 "comment": "Module references"
             },
             "ExternalModuleReference",
@@ -2694,6 +2699,75 @@
                     "SuperExpression": "SuperKeyword",
                     "ImportExpression": "ImportKeyword"
                 }
+            },
+            "OperatorsDeclaration": {
+                "extends": [
+                    "NodeBase",
+                    "DeclarationBase",
+                    "ClassElementBase",
+                    "CompositeBase"
+                ],
+                "members": [
+                    {
+                        "name": "Members",
+                        "type": "OperatorMethodDeclaration",
+                        "list": "NodeList"
+                    }
+                ]
+            },
+            "OperatorMethodDeclaration": {
+                "extends": [
+                    "NodeBase",
+                    "NamedMemberBase",
+                    "FunctionLikeWithBodyBase",
+                    "FlowNodeBase",
+                    "ClassElementBase",
+                    "CompositeBase"
+                ],
+                "members": [
+                    {
+                        "name": "modifiers",
+                        "inherited": true
+                    },
+                    {
+                        "name": "AsteriskToken",
+                        "inherited": true
+                    },
+                    {
+                        "name": "name",
+                        "inherited": true
+                    },
+                    {
+                        "name": "PostfixToken",
+                        "inherited": true
+                    },
+                    {
+                        "name": "TypeParameters",
+                        "inherited": true
+                    },
+                    {
+                        "name": "Parameters",
+                        "inherited": true,
+                        "visit": "parameters"
+                    },
+                    {
+                        "name": "Type",
+                        "inherited": true
+                    },
+                    {
+                        "name": "FullSignature",
+                        "inherited": true,
+                        "noTS": true
+                    },
+                    {
+                        "name": "Body",
+                        "inherited": true,
+                        "type": "FunctionBody",
+                        "optional": true,
+                        "visit": "functionBody"
+                    }
+                ],
+                "arena": true
             },
             "StringLiteral": {
                 "extends": [
@@ -5357,7 +5431,8 @@
                 "SetAccessorDeclaration",
                 "ConstructorDeclaration",
                 "FunctionExpression",
-                "ArrowFunction"
+                "ArrowFunction",
+                "OperatorMethodDeclaration"
             ],
             "VariableOrParameterDeclaration": [
                 "VariableDeclaration",
@@ -5466,6 +5541,7 @@
             "TypeParameterList": "TypeParameterDeclaration",
             "ParameterList": "ParameterDeclaration",
             "HeritageClauseList": "HeritageClause",
+            "OperatorMethodDeclarationList": "OperatorMethodDeclaration",
             "ClassElementList": "ClassElement",
             "TypeElementList": "TypeElement",
             "ExpressionWithTypeArgumentsList": "ExpressionWithTypeArguments",

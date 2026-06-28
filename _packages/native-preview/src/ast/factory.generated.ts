@@ -185,6 +185,8 @@ import type {
     ObjectLiteralElementLike,
     ObjectLiteralExpression,
     OmittedExpression,
+    OperatorMethodDeclaration,
+    OperatorsDeclaration,
     OptionalTypeNode,
     ParameterDeclaration,
     ParenthesizedExpression,
@@ -842,6 +844,10 @@ function cloneNodeData(node: Node): any {
             return { modifiers: n.modifiers, name: n.name, postfixToken: n.postfixToken, type: n.type, initializer: n.initializer };
         case SyntaxKind.ClassStaticBlockDeclaration:
             return { modifiers: n.modifiers, body: n.body };
+        case SyntaxKind.OperatorsDeclaration:
+            return { members: n.members };
+        case SyntaxKind.OperatorMethodDeclaration:
+            return { modifiers: n.modifiers, asteriskToken: n.asteriskToken, name: n.name, postfixToken: n.postfixToken, typeParameters: n.typeParameters, parameters: n.parameters, type: n.type, body: n.body };
         case SyntaxKind.StringLiteral:
             return { text: n.text, tokenFlags: n.tokenFlags };
         case SyntaxKind.NumericLiteral:
@@ -1301,6 +1307,16 @@ const forEachChildTable: Record<number, ForEachChildFunction> = {
         visitNode(cbNode, data.initializer),
     [SyntaxKind.ClassStaticBlockDeclaration]: (data, cbNode, cbNodes) =>
         visitNodes(cbNode, cbNodes, data.modifiers) ||
+        visitNode(cbNode, data.body),
+    [SyntaxKind.OperatorsDeclaration]: (data, cbNode, cbNodes) => visitNodes(cbNode, cbNodes, data.members),
+    [SyntaxKind.OperatorMethodDeclaration]: (data, cbNode, cbNodes) =>
+        visitNodes(cbNode, cbNodes, data.modifiers) ||
+        visitNode(cbNode, data.asteriskToken) ||
+        visitNode(cbNode, data.name) ||
+        visitNode(cbNode, data.postfixToken) ||
+        visitNodes(cbNode, cbNodes, data.typeParameters) ||
+        visitNodes(cbNode, cbNodes, data.parameters) ||
+        visitNode(cbNode, data.type) ||
         visitNode(cbNode, data.body),
     [SyntaxKind.BinaryExpression]: (data, cbNode, cbNodes) =>
         visitNodes(cbNode, cbNodes, data.modifiers) ||
@@ -2126,6 +2142,25 @@ export function createOmittedExpression(): OmittedExpression {
 
 export function createKeywordExpression<TKind extends KeywordExpressionSyntaxKind>(kind: TKind): KeywordExpression<TKind> {
     return new NodeObject(kind, undefined) as unknown as KeywordExpression<TKind>;
+}
+
+export function createOperatorsDeclaration(members: readonly OperatorMethodDeclaration[]): OperatorsDeclaration {
+    return new NodeObject(SyntaxKind.OperatorsDeclaration, {
+        members: createNodeArray(members),
+    }) as unknown as OperatorsDeclaration;
+}
+
+export function createOperatorMethodDeclaration(modifiers: readonly ModifierLike[] | undefined, asteriskToken: AsteriskToken | undefined, name: PropertyName, postfixToken: QuestionToken | ExclamationToken | undefined, typeParameters: readonly TypeParameterDeclaration[] | undefined, parameters: readonly ParameterDeclaration[], type?: TypeNode, body?: FunctionBody): OperatorMethodDeclaration {
+    return new NodeObject(SyntaxKind.OperatorMethodDeclaration, {
+        modifiers: modifiers ? createNodeArray(modifiers) : undefined,
+        asteriskToken,
+        name,
+        postfixToken,
+        typeParameters: typeParameters ? createNodeArray(typeParameters) : undefined,
+        parameters: createNodeArray(parameters),
+        type,
+        body,
+    }) as unknown as OperatorMethodDeclaration;
 }
 
 export function createStringLiteral(text: string, tokenFlags: TokenFlags): StringLiteral {
@@ -3318,6 +3353,14 @@ export function updatePropertyDeclaration(node: PropertyDeclaration, modifiers: 
 
 export function updateClassStaticBlockDeclaration(node: ClassStaticBlockDeclaration, modifiers: readonly ModifierLike[] | undefined, body: Block): ClassStaticBlockDeclaration {
     return node.modifiers !== modifiers || node.body !== body ? createClassStaticBlockDeclaration(modifiers, body) : node;
+}
+
+export function updateOperatorsDeclaration(node: OperatorsDeclaration, members: readonly OperatorMethodDeclaration[]): OperatorsDeclaration {
+    return node.members !== members ? createOperatorsDeclaration(members) : node;
+}
+
+export function updateOperatorMethodDeclaration(node: OperatorMethodDeclaration, modifiers: readonly ModifierLike[] | undefined, asteriskToken: AsteriskToken | undefined, name: PropertyName, postfixToken: QuestionToken | ExclamationToken | undefined, typeParameters: readonly TypeParameterDeclaration[] | undefined, parameters: readonly ParameterDeclaration[], type?: TypeNode, body?: FunctionBody): OperatorMethodDeclaration {
+    return node.modifiers !== modifiers || node.asteriskToken !== asteriskToken || node.name !== name || node.postfixToken !== postfixToken || node.typeParameters !== typeParameters || node.parameters !== parameters || node.type !== type || node.body !== body ? createOperatorMethodDeclaration(modifiers, asteriskToken, name, postfixToken, typeParameters, parameters, type, body) : node;
 }
 
 export function updateBinaryExpression(node: BinaryExpression, modifiers: readonly ModifierLike[] | undefined, left: Expression, type: TypeNode | undefined, operatorToken: BinaryOperatorToken, right: Expression): BinaryExpression {
